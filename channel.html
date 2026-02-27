@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>チャンネル情報 - 仙人YouTubeビュアー</title>
+  <style>
+    /* 元のCSSをそのまま維持 */
+    body { font-family: sans-serif; background: #1e1e2f; color: #fff; margin: 0; padding: 1em; }
+    .container { max-width: 900px; margin: auto; }
+    .channel-header { display: flex; align-items: center; gap: 1em; margin-bottom: 1em; }
+    .channel-header img { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #4caf50; }
+    .channel-name { font-size: 1.4em; font-weight: bold; }
+    .subscriber-count { color: #aaa; font-size: 0.9em; }
+    .channel-description { margin: 1em 0; max-height: 4.5em; overflow: hidden; position: relative; }
+    .channel-description.expanded { max-height: none; }
+    .toggle-description { color: #4caf50; cursor: pointer; font-size: 0.9em; margin-top: 0.5em; display: inline-block; }
+    .video-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1em; }
+    .video-card { background: #2d2f44; border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform 0.2s; }
+    .video-card:hover { transform: scale(1.03); }
+    .video-card img { width: 100%; display: block; }
+    .video-card .info { padding: 0.5em; }
+    .video-card .title { font-weight: bold; margin-bottom: 0.3em; }
+    .video-card .date { color: #aaa; font-size: 0.85em; }
+    .back { display: inline-block; margin-top: 1em; color: #4caf50; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="channel-header">
+      <img id="channel-icon" src="" alt="Channel Icon">
+      <div>
+        <div class="channel-name" id="channel-title">チャンネル名</div>
+        <div class="subscriber-count" id="subscriber-count">読み込み中...</div>
+      </div>
+    </div>
+    <div class="channel-description" id="channel-description"></div>
+    <span class="toggle-description" id="toggle-description">もっと見る</span>
+    <div class="video-list" id="channel-videos"></div>
+    <a href="index.html" class="back">← ホームに戻る</a>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const channelId = params.get('id');
+
+    async function loadChannel() {
+      try {
+        // チャンネル基本情報
+        const resInfo = await fetch(`http://localhost:3000/api/channels?id=${channelId}`);
+        const dataInfo = await resInfo.json();
+        const channel = dataInfo.items[0];
+
+        document.getElementById('channel-title').textContent = channel.snippet.title;
+        document.getElementById('subscriber-count').textContent = `登録者数: ${Number(channel.statistics.subscriberCount).toLocaleString()}人`;
+        document.getElementById('channel-icon').src = channel.snippet.thumbnails.default.url;
+        document.getElementById('channel-description').textContent = channel.snippet.description;
+
+        // チャンネルの動画リスト (検索APIで代用)
+        const resVideos = await fetch(`http://localhost:3000/api/search?q=channel:${channelId}`);
+        const dataVideos = await resVideos.json();
+        const container = document.getElementById('channel-videos');
+        
+        dataVideos.items.forEach(item => {
+          if (item.id.kind === 'youtube#video') {
+            const card = document.createElement('div');
+            card.className = 'video-card';
+            card.innerHTML = `<img src="${item.snippet.thumbnails.medium.url}"><div class="info"><div class="title">${item.snippet.title}</div></div>`;
+            card.onclick = () => { window.location.href = `watch.html?id=${item.id.videoId}`; };
+            container.appendChild(card);
+          }
+        });
+      } catch (e) { console.error(e); }
+    }
+
+    document.getElementById('toggle-description').onclick = () => {
+      const desc = document.getElementById('channel-description');
+      desc.classList.toggle('expanded');
+      document.getElementById('toggle-description').textContent = desc.classList.contains('expanded') ? '閉じる' : 'もっと見る';
+    };
+
+    if (channelId) loadChannel();
+  </script>
+</body>
+</html>
