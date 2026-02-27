@@ -2,14 +2,10 @@ services:
   - type: web
     name: sennin-youtube-api
     env: node
-    plan: free # 無料プラン。必要に応じて 'standard' などに変更
-    region: singapore # 日本から近いリージョンを選択
+    plan: free
+    region: singapore
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
-    healthCheckPath: /api/search?q=test # サーバーが正常か確認するパス
-    autoDeploy: true
