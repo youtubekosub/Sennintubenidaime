@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>仙人YouTubeビュアー (Invidious版)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; background: #1e1e2f; color: #fff; margin: 0; }
+    header { background: #27293d; padding: 1em; text-align: center; font-size: 1.5em; }
+    nav { display: flex; justify-content: center; background: #33354a; }
+    nav button { flex: 1; padding: 1em; border: none; background: none; color: #aaa; cursor: pointer; }
+    nav button.active { background: #444667; color: #fff; font-weight: bold; }
+    main { padding: 1em; }
+    section { display: none; }
+    section.active { display: block; }
+    .search-box { display: flex; margin-bottom: 1em; }
+    .search-box input { flex: 1; padding: 0.5em; border-radius: 4px 0 0 4px; border: none; }
+    .search-box button { padding: 0.5em 1em; background: #4caf50; color: white; border: none; border-radius: 0 4px 4px 0; cursor: pointer; }
+    .video-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1em; }
+    .video-card { background: #2d2f44; border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform 0.2s; }
+    .video-card:hover { transform: scale(1.03); }
+    .video-card img { width: 100%; display: block; }
+    .video-card .info { padding: 0.5em; }
+    .video-card .title { font-weight: bold; margin-bottom: 0.3em; }
+    .video-card .channel { color: #aaa; font-size: 0.9em; }
+    .clear-btn, .load-more-btn {
+      background: #f44336; color: white; padding: 0.5em 1em;
+      border: none; margin: 1em auto; display: block;
+      border-radius: 4px; cursor: pointer;
+    }
+    .load-more-btn { background: #2196f3; }
+  </style>
+</head>
+<body>
+  <header>仙人YouTubeビュアー</header>
+  <nav>
+    <button id="tab-search" class="active">検索</button>
+    <button id="tab-history">履歴</button>
+    <button id="tab-favorites">お気に入り</button>
+  </nav>
+  <main>
+    <section id="search-section" class="active">
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="検索ワードを入力...">
+        <button id="search-button">検索</button>
+      </div>
+      <div id="video-list" class="video-list"></div>
+      <button id="load-more" class="load-more-btn" style="display: none;">もっと見る</button>
+    </section>
+
+    <section id="history-section">
+      <button class="clear-btn" id="clear-history">履歴を全削除</button>
+      <div id="history-list" class="video-list"></div>
+    </section>
+
+    <section id="favorites-section">
+      <div id="favorites-list" class="video-list"></div>
+    </section>
+  </main>
+
+  <script>
+    const STORAGE_HISTORY = 'sennin_youtube_history';
+    const STORAGE_FAV = 'sennin_youtube_favorites';
+
+    const searchInput = document.getElementById('search-input');
+    const searchButton = document.getElementById('search-button');
+    const videoListEl = document.getElementById('video-list');
+    const historyListEl = document.getElementById('history-list');
+    const favoritesListEl = document.getElementById('favorites-list');
+    const loadMoreBtn = document.getElementById('load-more');
+
+    const tabSearch = document.getElementById('tab-search');
+    const tabHistory = document.getElementById('tab-history');
+    const tabFavorites = document.getElementById('tab-favorites');
+    const clearHistoryBtn = document.getElementById('clear-history');
+
+    let currentPage = 1;
+    let currentQuery = '';
+    let isLoading = false;
+
+    let history = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || '[]');
+    let favorites = JSON.parse(localStorage.getItem(STORAGE_FAV) || '[]');
+
+    function save(key, data) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    async function fetchVideos(query, append = false) {
+      if (isLoading || !query) return;
+      isLoading = true;
+
+      try {
+        // 自作Node.jsサーバーへリクエスト
+        const url = `http://localhost:3000/api/search?q=${encodeURIComponent(query)}&page=${currentPage}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.error) throw new Error(data.error);
+
+        if (!append) videoListEl.innerHTML = '';
+        appendVideos(data.items, videoListEl);
+        
+        currentPage = data.nextPage;
+        loadMoreBtn.style.display = 'block'; // Invidiousは常に次がある前提
+      } catch (e) {
+        alert("エラーが発生しました。サーバーが起動しているか確認してください。");
+      } finally {
+        isLoading = false;
+      }
+    }
+
+    function appendVideos(videos, container) {
+      videos.forEach(video => {
+        const isChannel = video.id.kind === 'youtube#channel';
+        const id = isChannel ? video.id.channelId : video.id.videoId;
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.innerHTML = `
+          <img src="${video.snippet.thumbnails.medium.url}" alt="">
+          <div class="info">
+            <div class="title">${video.snippet.title}</div>
+            <div class="channel">${video.snippet.channelTitle}${isChannel ? '（チャンネル）' : ''}</div>
+          </div>
+        `;
+        card.onclick = () => {
+          if (!history.some(v => (v.id.videoId || v.id.channelId) === id)) {
+            history.unshift(video);
+            history = history.slice(0, 50);
+            save(STORAGE_HISTORY, history);
+          }
+          if (isChannel) {
+            window.location.href = `channel.html?id=${id}`;
+          } else {
+            window.location.href = `watch.html?id=${id}`;
+          }
+        };
+        container.appendChild(card);
+      });
+    }
+
+    function renderHistory() {
+      historyListEl.innerHTML = '';
+      appendVideos(history, historyListEl);
+    }
+
+    function renderFavorites() {
+      favoritesListEl.innerHTML = '';
+      appendVideos(favorites, favoritesListEl);
+    }
+
+    function switchTab(tab) {
+      [tabSearch, tabHistory, tabFavorites].forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('section').forEach(sec => sec.classList.remove('active'));
+
+      if (tab === 'search') {
+        tabSearch.classList.add('active');
+        document.getElementById('search-section').classList.add('active');
+      } else if (tab === 'history') {
+        tabHistory.classList.add('active');
+        document.getElementById('history-section').classList.add('active');
+        renderHistory();
+      } else if (tab === 'favorites') {
+        tabFavorites.classList.add('active');
+        document.getElementById('favorites-section').classList.add('active');
+        renderFavorites();
+      }
+    }
+
+    tabSearch.onclick = () => switchTab('search');
+    tabHistory.onclick = () => switchTab('history');
+    tabFavorites.onclick = () => switchTab('favorites');
+    clearHistoryBtn.onclick = () => {
+      if (confirm('履歴をすべて削除しますか？')) {
+        history = [];
+        save(STORAGE_HISTORY, history);
+        renderHistory();
+      }
+    };
+
+    searchButton.onclick = () => {
+      const q = searchInput.value.trim();
+      if (q) {
+        currentQuery = q;
+        currentPage = 1;
+        fetchVideos(currentQuery);
+      }
+    };
+    searchInput.addEventListener('keypress', e => {
+      if (e.key === 'Enter') searchButton.click();
+    });
+
+    loadMoreBtn.onclick = () => {
+      if (currentQuery) {
+        fetchVideos(currentQuery, true);
+      }
+    };
+  </script>
+
+  <div style="text-align: center; margin: 2em 0;">
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSe0NXWhtUwApapvXSxXcxwVYAM4Paqa4GbpJ3oTPTaEH0C0uA/viewform" target="_blank" style="background: #4caf50; color: white; padding: 0.75em 1.5em; text-decoration: none; border-radius: 4px; font-weight: bold; margin: 0 0.5em;">お問い合わせと回答</a>
+    <a href="game.html" style="background: #ff9800; color: white; padding: 0.75em 1.5em; text-decoration: none; border-radius: 4px; font-weight: bold; margin: 0 0.5em;">ゲーム</a>
+  </div>
+</body>
+</html>
